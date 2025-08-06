@@ -1,3 +1,1514 @@
+<div id="status"></div>
+                <button type="submit" class="btn">Create Account</button>
+            </form>
+            <div class="links">
+                <p>Already have an account? <a href="/login">Login here</a></p>
+                <p><a href="/">← Back to home</a></p>
+            </div>
+        </div>
+    </div>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            if (document.cookie.includes('session_token=')) {
+                window.location.href = '/dashboard';
+                return;
+            }
+            
+            document.getElementById('registerForm').addEventListener('submit', async function(e) {
+                e.preventDefault();
+                
+                const username = document.getElementById('username').value.trim();
+                const email = document.getElementById('email').value.trim();
+                const password = document.getElementById('password').value;
+                const confirmPassword = document.getElementById('confirmPassword').value;
+                
+                if (!username || !email || !password || !confirmPassword) {
+                    showStatus('Please fill in all fields', 'error');
+                    return;
+                }
+                
+                if (password !== confirmPassword) {
+                    showStatus('Passwords do not match', 'error');
+                    return;
+                }
+                
+                if (password.length < 6) {
+                    showStatus('Password must be at least 6 characters', 'error');
+                    return;
+                }
+                
+                showStatus('Creating account...', 'loading');
+                
+                try {
+                    const response = await fetch('/api/register', {
+                        method: 'POST',
+                        headers: { 
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                        },
+                        body: JSON.stringify({ username, email, password })
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+                    
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        showStatus('Account created! Redirecting to login...', 'success');
+                        setTimeout(() => {
+                            window.location.href = '/login';
+                        }, 1500);
+                    } else {
+                        showStatus(result.error || 'Registration failed', 'error');
+                    }
+                } catch (error) {
+                    console.error('Registration error:', error);
+                    showStatus('Registration failed. Please try again.', 'error');
+                }
+            });
+        });
+        
+        function showStatus(message, type) {
+            const statusDiv = document.getElementById('status');
+            if (statusDiv) {
+                statusDiv.className = `status ${type}`;
+                statusDiv.textContent = message;
+                statusDiv.style.display = 'block';
+            }
+        }
+    </script>
+</body>
+</html>'''
+        
+        self.send_response(200)
+        self.send_header('Content-type', 'text/html')
+        self.send_cors_headers()
+        self.end_headers()
+        self.wfile.write(html_content.encode())
+    
+    def serve_dashboard(self):
+        """Serve the user dashboard"""
+        user = self.get_session_user()
+        if not user:
+            self.send_redirect('/login')
+            return
+        
+        html_content = f'''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Reddit Monitor</title>
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }}
+        .container {{
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }}
+        .header {{
+            background: linear-gradient(135deg, #ff6b6b 0%, #ff8e53 100%);
+            color: white;
+            padding: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+        }}
+        .header-left h1 {{ font-size: 2.2rem; margin-bottom: 5px; font-weight: 700; }}
+        .header-left p {{ font-size: 1.1rem; opacity: 0.9; }}
+        .header-right {{ display: flex; align-items: center; gap: 15px; }}
+        .user-info {{ text-align: right; }}
+        .user-name {{ font-weight: 600; font-size: 1.1rem; }}
+        .user-email {{ font-size: 0.9rem; opacity: 0.8; }}
+        .btn-logout {{
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            padding: 8px 16px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }}
+        .btn-logout:hover {{
+            background: rgba(255, 255, 255, 0.3);
+            border-color: rgba(255, 255, 255, 0.5);
+        }}
+        .controls {{
+            padding: 30px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+        }}
+        .control-row {{
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            align-items: end;
+        }}
+        .control-group {{
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            flex: 1;
+            min-width: 200px;
+        }}
+        .control-group label {{
+            font-weight: 600;
+            color: #495057;
+            font-size: 0.9rem;
+        }}
+        .control-group input,
+        .control-group select,
+        .control-group textarea {{
+            padding: 12px 16px;
+            border: 2px solid #e9ecef;
+            border-radius: 10px;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            background: white;
+            font-family: inherit;
+        }}
+        .control-group textarea {{ resize: vertical; min-height: 80px; }}
+        .control-group input:focus,
+        .control-group select:focus,
+        .control-group textarea:focus {{
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }}
+        .btn {{
+            padding: 12px 24px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+            align-self: end;
+        }}
+        .btn-primary {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }}
+        .btn-success {{ background: linear-gradient(135deg, #56ab2f 0%, #a8e6cf 100%); color: white; }}
+        .btn-danger {{ background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); color: white; padding: 8px 16px; font-size: 0.9rem; }}
+        .btn:hover {{ transform: translateY(-2px); box-shadow: 0 10px 20px rgba(0,0,0,0.2); }}
+        .status {{
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 10px;
+            font-weight: 500;
+        }}
+        .status.loading {{ background: #e3f2fd; color: #1976d2; border: 1px solid #bbdefb; }}
+        .status.success {{ background: #e8f5e8; color: #2e7d32; border: 1px solid #a5d6a7; }}
+        .status.error {{ background: #ffebee; color: #c62828; border: 1px solid #ef9a9a; }}
+        .posts-container {{ padding: 30px; }}
+        .posts-title {{ font-size: 1.5rem; font-weight: 700; color: #343a40; margin-bottom: 20px; text-align: center; }}
+        .subreddit-section {{ margin-bottom: 40px; background: #f8f9fa; border-radius: 15px; padding: 25px; }}
+        .subreddit-title {{ font-size: 1.3rem; font-weight: 600; color: #495057; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }}
+        .subreddit-error {{ background: #ffebee; color: #c62828; padding: 15px; border-radius: 10px; border: 1px solid #ef9a9a; margin-bottom: 20px; }}
+        .post-card {{
+            background: white;
+            border: 2px solid #e9ecef;
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 20px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }}
+        .post-card:hover {{
+            transform: translateY(-3px);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+            border-color: #667eea;
+        }}
+        .post-header {{ display: flex; align-items: center; gap: 15px; margin-bottom: 15px; }}
+        .post-number {{
+            background: linear-gradient(135deg, #ff6b6b 0%, #ff8e53 100%);
+            color: white;
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1.2rem;
+            flex-shrink: 0;
+        }}
+        .post-title {{ font-size: 1.3rem; font-weight: 600; color: #1a73e8; line-height: 1.4; flex: 1; }}
+        .post-title a {{ color: inherit; text-decoration: none; }}
+        .post-title a:hover {{ text-decoration: underline; }}
+        .post-meta {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 15px;
+            flex-wrap: wrap;
+            gap: 15px;
+        }}
+        .post-author {{ color: #6c757d; font-size: 1rem; font-weight: 500; }}
+        .post-stats {{ display: flex; gap: 20px; }}
+        .stat {{
+            background: #f8f9fa;
+            padding: 8px 15px;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }}
+        .stat.score {{ color: #ff6b6b; }}
+        .stat.comments {{ color: #667eea; }}
+        .subscription-section {{ background: #f8f9fa; padding: 25px; border-top: 1px solid #dee2e6; }}
+        .subscription-section h3 {{ color: #495057; margin-bottom: 15px; font-size: 1.3rem; }}
+        .subscription-item {{
+            background: white;
+            padding: 20px;
+            margin: 15px 0;
+            border-radius: 10px;
+            border: 1px solid #dee2e6;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }}
+        .subreddit-tags {{ display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }}
+        .tag {{ background: #e9ecef; color: #495057; padding: 4px 8px; border-radius: 12px; font-size: 0.8rem; font-weight: 500; }}
+        .help-text {{ color: #6c757d; font-size: 0.9rem; margin-top: 5px; }}
+        .empty-state {{ text-align: center; padding: 60px 20px; color: #6c757d; }}
+        .empty-state h3 {{ font-size: 1.5rem; margin-bottom: 10px; color: #495057; }}
+        @media (max-width: 768px) {{
+            .header {{ flex-direction: column; gap: 20px; text-align: center; }}
+            .control-row {{ flex-direction: column; align-items: stretch; }}
+            .btn {{ align-self: stretch; }}
+            .post-meta {{ flex-direction: column; align-items: stretch; gap: 10px; }}
+            .post-stats {{ justify-content: center; }}
+            .subscription-item {{ flex-direction: column; gap: 15px; align-items: stretch; }}
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="header-left">
+                <h1>📊 Reddit Monitor</h1>
+                <p>Your Personal Dashboard</p>
+            </div>
+            <div class="header-right">
+                <div class="user-info">
+                    <div class="user-name">👤 {user[1]}</div>
+                    <div class="user-email">{user[2]}</div>
+                </div>
+                <a href="/logout" class="btn-logout">Logout</a>
+            </div>
+        </div>
+
+        <div class="controls">
+            <div class="control-row">
+                <div class="control-group">
+                    <label for="subreddits">📍 Subreddits (comma-separated)</label>
+                    <textarea id="subreddits" placeholder="e.g., programming, technology, MachineLearning, artificial">programming, technology</textarea>
+                    <div class="help-text">Enter multiple subreddits separated by commas</div>
+                </div>
+                
+                <div class="control-group">
+                    <label for="sortType">📊 Sort By</label>
+                    <select id="sortType">
+                        <option value="hot">🔥 Hot</option>
+                        <option value="top">⭐ Top</option>
+                        <option value="new">🆕 New</option>
+                    </select>
+                </div>
+                
+                <div class="control-group">
+                    <label for="timeFilter">⏰ Time Period</label>
+                    <select id="timeFilter">
+                        <option value="day">Today</option>
+                        <option value="week">This Week</option>
+                        <option value="month">This Month</option>
+                        <option value="year">This Year</option>
+                    </select>
+                </div>
+                
+                <button class="btn btn-primary" onclick="fetchPosts()">
+                    🔍 Preview Posts
+                </button>
+            </div>
+
+            <div id="status"></div>
+        </div>
+
+        <div class="posts-container">
+            <div id="postsContainer">
+                <div class="empty-state">
+                    <h3>🎯 Ready to Explore</h3>
+                    <p>Enter subreddits and click "Preview Posts" to see what you'll receive in your daily digest!</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="subscription-section" id="subscriptionSection">
+            <h3>📧 Daily Email Subscription</h3>
+            <p style="color: #6c757d; margin-bottom: 20px;">
+                Subscribe to get daily top trending posts delivered every morning at 10:00 AM Israel time
+            </p>
+            
+            <button class="btn btn-success" id="subscribeBtn" onclick="subscribeToDaily()" style="display: none;">
+                📧 Subscribe to Daily Digest
+            </button>
+            
+            <div id="subscriptionStatus"></div>
+            <div id="currentSubscription"></div>
+        </div>
+    </div>
+
+    <script>
+        let currentPosts = {{}};
+        let currentConfig = {{}};
+        let currentUser = null;
+
+        window.onload = async () => {{
+            await loadUserInfo();
+            await loadCurrentSubscription();
+        }};
+
+        async function loadUserInfo() {{
+            try {{
+                const response = await fetch('/api/user');
+                const result = await response.json();
+                
+                if (result.success) {{
+                    currentUser = result.user;
+                }} else {{
+                    window.location.href = '/login';
+                }}
+            }} catch (error) {{
+                console.error('Failed to load user info:', error);
+                window.location.href = '/login';
+            }}
+        }}
+
+        async function loadCurrentSubscription() {{
+            try {{
+                const response = await fetch('/api/subscriptions');
+                const result = await response.json();
+                
+                if (result.success && result.subscription) {{
+                    displayCurrentSubscription(result.subscription);
+                }} else {{
+                    showNoSubscription();
+                }}
+            }} catch (error) {{
+                console.error('Failed to load subscription:', error);
+            }}
+        }}
+
+        function displayCurrentSubscription(subscription) {{
+            const container = document.getElementById('currentSubscription');
+            const nextSend = new Date(subscription.next_send).toLocaleDateString();
+            
+            container.innerHTML = `
+                <div class="subscription-item">
+                    <div>
+                        <strong>✅ Active Daily Digest</strong>
+                        <div class="subreddit-tags">
+                            ${{subscription.subreddits.map(sr => `<span class="tag">r/${{sr}}</span>`).join('')}}
+                        </div>
+                        <small>Next email: ${{nextSend}} at 10:00 AM Israel time</small><br>
+                        <small>Sort: ${{subscription.sort_type}} | Time: ${{subscription.time_filter}}</small>
+                    </div>
+                    <button class="btn btn-danger" onclick="unsubscribeFromDaily()">
+                        🗑️ Unsubscribe
+                    </button>
+                </div>
+            `;
+            
+            document.getElementById('subreddits').value = subscription.subreddits.join(', ');
+            document.getElementById('sortType').value = subscription.sort_type;
+            document.getElementById('timeFilter').value = subscription.time_filter;
+        }}
+
+        function showNoSubscription() {{
+            const container = document.getElementById('currentSubscription');
+            container.innerHTML = `
+                <div style="text-align: center; padding: 20px; color: #6c757d;">
+                    <p>📭 No active subscription</p>
+                    <p>Preview posts above and then subscribe to get daily emails!</p>
+                </div>
+            `;
+            document.getElementById('subscribeBtn').style.display = 'block';
+        }}
+
+        function showStatus(message, type = 'loading', containerId = 'status') {{
+            const statusDiv = document.getElementById(containerId);
+            statusDiv.className = `status ${{type}}`;
+            statusDiv.textContent = message;
+            statusDiv.style.display = 'block';
+        }}
+
+        async function fetchPosts() {{
+            const subredditsInput = document.getElementById('subreddits').value.trim();
+            if (!subredditsInput) {{
+                showStatus('Please enter at least one subreddit name', 'error');
+                return;
+            }}
+
+            const subreddits = subredditsInput.split(',').map(s => s.trim()).filter(s => s);
+            
+            currentConfig = {{
+                subreddits: subreddits,
+                sortType: document.getElementById('sortType').value,
+                timeFilter: document.getElementById('timeFilter').value
+            }};
+
+            showStatus(`🔍 Fetching top posts from ${{subreddits.length}} subreddit(s)...`, 'loading');
+
+            try {{
+                const promises = subreddits.map(subreddit => 
+                    fetchSubredditPosts(subreddit, currentConfig.sortType, currentConfig.timeFilter)
+                );
+                
+                const results = await Promise.all(promises);
+                
+                let totalPosts = 0;
+                let errors = 0;
+                currentPosts = {{}};
+                
+                results.forEach((result, index) => {{
+                    const subreddit = subreddits[index];
+                    if (result.success && result.posts.length > 0) {{
+                        currentPosts[subreddit] = result.posts;
+                        totalPosts += result.posts.length;
+                    }} else {{
+                        currentPosts[subreddit] = {{ error: result.error || 'Unknown error' }};
+                        errors++;
+                    }}
+                }});
+
+                if (totalPosts > 0) {{
+                    displayPosts(currentPosts);
+                    showStatus(`✅ Found ${{totalPosts}} posts from ${{subreddits.length - errors}} subreddit(s)${{errors > 0 ? ` (${{errors}} failed)` : ''}}`, 'success');
+                    document.getElementById('subscribeBtn').style.display = 'block';
+                }} else {{
+                    showStatus('❌ No posts found from any subreddit. Check names and try again.', 'error');
+                    displayEmptyState();
+                }}
+
+            }} catch (error) {{
+                console.error('Error:', error);
+                showStatus('❌ Failed to fetch posts. Please try again.', 'error');
+            }}
+        }}
+
+        async function fetchSubredditPosts(subreddit, sortType, timeFilter) {{
+            try {{
+                const apiUrl = `/api/reddit?subreddit=${{encodeURIComponent(subreddit)}}&sort=${{sortType}}&time=${{timeFilter}}&limit=5`;
+                const response = await fetch(apiUrl);
+                return await response.json();
+            }} catch (error) {{
+                return {{ success: false, error: 'Network error', posts: [] }};
+            }}
+        }}
+
+        function displayPosts(postsData) {{
+            const container = document.getElementById('postsContainer');
+            let html = '<h2 class="posts-title">🏆 Preview: Your Daily Digest Content</h2>';
+            
+            Object.entries(postsData).forEach(([subreddit, data]) => {{
+                html += `<div class="subreddit-section">`;
+                html += `<div class="subreddit-title">📍 r/${{subreddit}}</div>`;
+                
+                if (data.error) {{
+                    html += `<div class="subreddit-error">
+                        ❌ Error: ${{data.error}}
+                        ${{data.error.includes('private') || data.error.includes('forbidden') || data.error.includes('approved') ? 
+                            '<br><strong>This subreddit requires membership or approval to access.</strong>' : ''}}
+                    </div>`;
+                }} else {{
+                    data.forEach(post => {{
+                        html += `
+                        <div class="post-card">
+                            <div class="post-header">
+                                <div class="post-number">${{post.position}}</div>
+                                <div class="post-title">
+                                    <a href="${{post.url}}" target="_blank">${{post.title}}</a>
+                                </div>
+                            </div>
+                            <div class="post-meta">
+                                <div class="post-author">👤 by u/${{post.author}}</div>
+                                <div class="post-stats">
+                                    <div class="stat score">
+                                        👍 ${{formatNumber(post.score)}}
+                                    </div>
+                                    <div class="stat comments">
+                                        💬 ${{formatNumber(post.comments)}}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        `;
+                    }});
+                }}
+                
+                html += '</div>';
+            }});
+            
+            container.innerHTML = html;
+        }}
+
+        function displayEmptyState() {{
+            const container = document.getElementById('postsContainer');
+            container.innerHTML = `
+                <div class="empty-state">
+                    <h3>🔍 No Posts Found</h3>
+                    <p>Try different subreddits or check the spelling</p>
+                </div>
+            `;
+        }}
+
+        function formatNumber(num) {{
+            if (num >= 1000000) {{
+                return (num / 1000000).toFixed(1) + 'M';
+            }} else if (num >= 1000) {{
+                return (num / 1000).toFixed(1) + 'K';
+            }}
+            return num.toString();
+        }}
+
+        async function subscribeToDaily() {{
+            if (Object.keys(currentPosts).length === 0) {{
+                showStatus('Please preview posts first before subscribing', 'error', 'subscriptionStatus');
+                return;
+            }}
+
+            showStatus('📧 Setting up your daily digest...', 'loading', 'subscriptionStatus');
+
+            try {{
+                const subscriptionData = {{
+                    subreddits: currentConfig.subreddits,
+                    sortType: currentConfig.sortType,
+                    timeFilter: currentConfig.timeFilter,
+                    posts: currentPosts
+                }};
+
+                const response = await fetch('/api/subscribe', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify(subscriptionData)
+                }});
+
+                const result = await response.json();
+
+                if (result.success) {{
+                    showStatus(`✅ Success! You'll receive daily digests at 10AM Israel time for: ${{currentConfig.subreddits.join(', ')}}`, 'success', 'subscriptionStatus');
+                    await loadCurrentSubscription();
+                    document.getElementById('subscribeBtn').style.display = 'none';
+                }} else {{
+                    showStatus(`❌ Subscription failed: ${{result.error}}`, 'error', 'subscriptionStatus');
+                }}
+
+            }} catch (error) {{
+                console.error('Subscription error:', error);
+                showStatus('❌ Failed to set up subscription. Please try again.', 'error', 'subscriptionStatus');
+            }}
+        }}
+
+        async function unsubscribeFromDaily() {{
+            if (!confirm('Are you sure you want to unsubscribe from daily digests?')) {{
+                return;
+            }}
+
+            try {{
+                const response = await fetch('/api/unsubscribe', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{ unsubscribe: true }})
+                }});
+
+                const result = await response.json();
+                
+                if (result.success) {{
+                    showStatus('✅ Successfully unsubscribed from daily digest', 'success', 'subscriptionStatus');
+                    await loadCurrentSubscription();
+                }} else {{
+                    showStatus('❌ Failed to unsubscribe', 'error', 'subscriptionStatus');
+                }}
+            }} catch (error) {{
+                console.error('Unsubscribe error:', error);
+                showStatus('❌ Failed to unsubscribe', 'error', 'subscriptionStatus');
+            }}
+        }}
+    </script>
+</body>
+</html>'''
+        
+        self.send_response(200)
+        self.send_header('Content-type', 'text/html')
+        self.send_cors_headers()
+        self.end_headers()
+        self.wfile.write(html_content.encode())
+    
+    def send_redirect(self, location):
+        """Send redirect response"""
+        self.send_response(302)
+        self.send_header('Location', location)
+        self.end_headers()
+    
+    def handle_register(self, post_data):
+        """Handle user registration"""
+        try:
+            data = json.loads(post_data.decode())
+            username = data.get('username', '').strip()
+            email = data.get('email', '').strip()
+            password = data.get('password', '')
+            
+            if not username or not email or not password:
+                self.send_json_response({
+                    'success': False,
+                    'error': 'All fields are required'
+                })
+                return
+            
+            if len(password) < 6:
+                self.send_json_response({
+                    'success': False,
+                    'error': 'Password must be at least 6 characters'
+                })
+                return
+            
+            user_id, error = self.db.create_user(username, email, password)
+            
+            if user_id:
+                print(f"👤 New user registered: {username} ({email})")
+                self.send_json_response({
+                    'success': True,
+                    'message': 'Account created successfully!'
+                })
+            else:
+                self.send_json_response({
+                    'success': False,
+                    'error': error
+                })
+                
+        except Exception as e:
+            print(f"❌ Registration error: {e}")
+            self.send_json_response({
+                'success': False,
+                'error': 'Registration failed'
+            }, 500)
+    
+    def handle_login(self, post_data):
+        """Handle user login"""
+        try:
+            data = json.loads(post_data.decode())
+            username = data.get('username', '').strip()
+            password = data.get('password', '')
+            
+            if not username or not password:
+                self.send_json_response({
+                    'success': False,
+                    'error': 'Username and password are required'
+                })
+                return
+            
+            user = self.db.authenticate_user(username, password)
+            
+            if user:
+                token = self.db.create_session(user[0])
+                if token:
+                    print(f"🔑 User logged in: {username}")
+                    self.send_json_response({
+                        'success': True,
+                        'token': token,
+                        'user': {'id': user[0], 'username': user[1], 'email': user[2]}
+                    })
+                else:
+                    self.send_json_response({
+                        'success': False,
+                        'error': 'Failed to create session'
+                    })
+            else:
+                self.send_json_response({
+                    'success': False,
+                    'error': 'Invalid username or password'
+                })
+                
+        except Exception as e:
+            print(f"❌ Login error: {e}")
+            self.send_json_#!/usr/bin/env python3
+"""
+Multi-User Reddit Monitor - Python 3.13 Compatible
+User registration, login, and personal subscriptions - FIXED VERSION
+"""
+
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import json
+import urllib.parse
+import requests
+import random
+import time
+import smtplib
+from datetime import datetime, timedelta
+import threading
+import schedule
+import os
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+import hashlib
+import secrets
+import sqlite3
+from pathlib import Path
+import re
+import xml.etree.ElementTree as ET
+from html import unescape
+
+try:
+    import pytz
+    PYTZ_AVAILABLE = True
+except ImportError:
+    PYTZ_AVAILABLE = False
+
+class DatabaseManager:
+    """Handles all database operations"""
+    
+    def __init__(self, db_path="reddit_monitor.db"):
+        self.db_path = db_path
+        self.init_database()
+    
+    def init_database(self):
+        """Initialize database tables"""
+        conn = sqlite3.connect(self.db_path)
+        conn.execute("PRAGMA journal_mode=WAL")
+        cursor = conn.cursor()
+        
+        # Users table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                email TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_login TIMESTAMP,
+                is_active BOOLEAN DEFAULT 1
+            )
+        ''')
+        
+        # Sessions table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS sessions (
+                token TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            )
+        ''')
+        
+        # Subscriptions table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS subscriptions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                subreddits TEXT NOT NULL,
+                sort_type TEXT DEFAULT 'hot',
+                time_filter TEXT DEFAULT 'day',
+                next_send TIMESTAMP NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                is_active BOOLEAN DEFAULT 1,
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            )
+        ''')
+        
+        conn.commit()
+        conn.close()
+        print("📊 Database initialized successfully")
+    
+    def create_user(self, username, email, password):
+        """Create a new user"""
+        try:
+            password_hash = hashlib.sha256(password.encode()).hexdigest()
+            
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                INSERT INTO users (username, email, password_hash)
+                VALUES (?, ?, ?)
+            ''', (username, email, password_hash))
+            
+            user_id = cursor.lastrowid
+            conn.commit()
+            conn.close()
+            
+            return user_id, None
+        except sqlite3.IntegrityError as e:
+            if 'username' in str(e):
+                return None, "Username already exists"
+            elif 'email' in str(e):
+                return None, "Email already registered"
+            else:
+                return None, "Registration failed"
+        except Exception as e:
+            return None, f"Database error: {str(e)}"
+    
+    def authenticate_user(self, username, password):
+        """Authenticate user login"""
+        try:
+            password_hash = hashlib.sha256(password.encode()).hexdigest()
+            
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                SELECT id, username, email FROM users 
+                WHERE username = ? AND password_hash = ? AND is_active = 1
+            ''', (username, password_hash))
+            
+            user = cursor.fetchone()
+            
+            if user:
+                cursor.execute('''
+                    UPDATE users SET last_login = CURRENT_TIMESTAMP 
+                    WHERE id = ?
+                ''', (user[0],))
+                conn.commit()
+            
+            conn.close()
+            return user
+        except Exception as e:
+            print(f"❌ Authentication error: {e}")
+            return None
+    
+    def create_session(self, user_id):
+        """Create a new session token"""
+        try:
+            token = secrets.token_urlsafe(32)
+            expires_at = datetime.now() + timedelta(days=7)
+            
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                INSERT INTO sessions (token, user_id, expires_at)
+                VALUES (?, ?, ?)
+            ''', (token, user_id, expires_at))
+            
+            conn.commit()
+            conn.close()
+            
+            return token
+        except Exception as e:
+            print(f"❌ Session creation error: {e}")
+            return None
+    
+    def get_user_from_session(self, token):
+        """Get user from session token"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                SELECT u.id, u.username, u.email
+                FROM users u
+                JOIN sessions s ON u.id = s.user_id
+                WHERE s.token = ? AND s.expires_at > CURRENT_TIMESTAMP
+            ''', (token,))
+            
+            user = cursor.fetchone()
+            conn.close()
+            
+            return user
+        except Exception as e:
+            print(f"❌ Session validation error: {e}")
+            return None
+    
+    def delete_session(self, token):
+        """Delete a session (logout)"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute('DELETE FROM sessions WHERE token = ?', (token,))
+            
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"❌ Session deletion error: {e}")
+            return False
+    
+    def create_subscription(self, user_id, subreddits, sort_type, time_filter, next_send):
+        """Create a new subscription"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute('DELETE FROM subscriptions WHERE user_id = ?', (user_id,))
+            
+            cursor.execute('''
+                INSERT INTO subscriptions (user_id, subreddits, sort_type, time_filter, next_send)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (user_id, json.dumps(subreddits), sort_type, time_filter, next_send))
+            
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"❌ Subscription creation error: {e}")
+            return False
+    
+    def get_user_subscriptions(self, user_id):
+        """Get user's subscriptions"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                SELECT subreddits, sort_type, time_filter, next_send, created_at
+                FROM subscriptions
+                WHERE user_id = ? AND is_active = 1
+            ''', (user_id,))
+            
+            result = cursor.fetchone()
+            conn.close()
+            
+            if result:
+                return {
+                    'subreddits': json.loads(result[0]),
+                    'sort_type': result[1],
+                    'time_filter': result[2],
+                    'next_send': result[3],
+                    'created_at': result[4]
+                }
+            return None
+        except Exception as e:
+            print(f"❌ Get subscriptions error: {e}")
+            return None
+    
+    def delete_user_subscription(self, user_id):
+        """Delete user's subscription"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute('DELETE FROM subscriptions WHERE user_id = ?', (user_id,))
+            
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"❌ Subscription deletion error: {e}")
+            return False
+    
+    def get_all_active_subscriptions(self):
+        """Get all active subscriptions for daily digest"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                SELECT s.id, s.user_id, u.email, s.subreddits, s.sort_type, s.time_filter, s.next_send
+                FROM subscriptions s
+                JOIN users u ON s.user_id = u.id
+                WHERE s.is_active = 1 AND u.is_active = 1
+            ''')
+            
+            results = cursor.fetchall()
+            conn.close()
+            
+            subscriptions = []
+            for row in results:
+                subscriptions.append({
+                    'id': row[0],
+                    'user_id': row[1],
+                    'email': row[2],
+                    'subreddits': json.loads(row[3]),
+                    'sort_type': row[4],
+                    'time_filter': row[5],
+                    'next_send': row[6]
+                })
+            
+            return subscriptions
+        except Exception as e:
+            print(f"❌ Get all subscriptions error: {e}")
+            return []
+    
+    def update_subscription_next_send(self, subscription_id, next_send):
+        """Update subscription next send time"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                UPDATE subscriptions SET next_send = ? WHERE id = ?
+            ''', (next_send, subscription_id))
+            
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"❌ Update next send error: {e}")
+            return False
+
+class MultiUserRedditHandler(BaseHTTPRequestHandler):
+    db = DatabaseManager()
+    
+    def __init__(self, *args, **kwargs):
+        self.user_agents = [
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        ]
+        super().__init__(*args, **kwargs)
+    
+    def get_session_user(self):
+        """Get current user from session cookie"""
+        cookie_header = self.headers.get('Cookie', '')
+        if not cookie_header:
+            return None
+            
+        for cookie in cookie_header.split(';'):
+            cookie = cookie.strip()
+            if cookie.startswith('session_token='):
+                token = cookie.split('session_token=')[1].strip()
+                if token:
+                    return self.db.get_user_from_session(token)
+        return None
+    
+    def do_GET(self):
+        """Handle GET requests"""
+        if self.path == '/' or self.path == '/index.html':
+            self.serve_main_page()
+        elif self.path == '/login':
+            self.serve_login_page()
+        elif self.path == '/register':
+            self.serve_register_page()
+        elif self.path == '/dashboard':
+            self.serve_dashboard()
+        elif self.path == '/api/test-reddit':
+            self.handle_test_reddit()
+        elif self.path.startswith('/api/reddit'):
+            self.handle_reddit_api()
+        elif self.path == '/api/user':
+            self.handle_get_user()
+        elif self.path == '/api/subscriptions':
+            self.handle_get_user_subscriptions()
+        elif self.path == '/logout':
+            self.handle_logout()
+        else:
+            self.send_error(404)
+    
+    def do_POST(self):
+        """Handle POST requests"""
+        content_length = int(self.headers['Content-Length'])
+        post_data = self.rfile.read(content_length)
+        
+        if self.path == '/api/register':
+            self.handle_register(post_data)
+        elif self.path == '/api/login':
+            self.handle_login(post_data)
+        elif self.path == '/api/subscribe':
+            self.handle_subscription(post_data)
+        elif self.path == '/api/unsubscribe':
+            self.handle_unsubscribe(post_data)
+        else:
+            self.send_error(404)
+    
+    def do_OPTIONS(self):
+        """Handle OPTIONS for CORS"""
+        self.send_response(200)
+        self.send_cors_headers()
+        self.end_headers()
+    
+    def send_cors_headers(self):
+        """Send CORS headers"""
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+    
+    def serve_main_page(self):
+        """Serve the main landing page"""
+        html_content = '''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reddit Monitor - Welcome</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            max-width: 600px;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+            text-align: center;
+        }
+        .header {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ff8e53 100%);
+            color: white;
+            padding: 40px 30px;
+        }
+        .header h1 { font-size: 3rem; margin-bottom: 10px; font-weight: 700; }
+        .header p { font-size: 1.2rem; opacity: 0.9; }
+        .content { padding: 40px 30px; }
+        .features {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 20px;
+            margin: 30px 0;
+        }
+        .feature { background: #f8f9fa; padding: 20px; border-radius: 15px; border-left: 4px solid #667eea; }
+        .feature h3 { color: #495057; margin-bottom: 10px; font-size: 1.2rem; }
+        .feature p { color: #6c757d; line-height: 1.6; }
+        .buttons { display: flex; gap: 20px; justify-content: center; margin-top: 30px; }
+        .btn {
+            padding: 15px 30px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .btn-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+        .btn-success { background: linear-gradient(135deg, #56ab2f 0%, #a8e6cf 100%); color: white; }
+        .btn:hover { transform: translateY(-2px); box-shadow: 0 10px 20px rgba(0,0,0,0.2); }
+        @media (max-width: 768px) {
+            .buttons { flex-direction: column; }
+            .header h1 { font-size: 2.5rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 Reddit Monitor</h1>
+            <p>Your Personal Reddit Digest Service</p>
+        </div>
+        <div class="content">
+            <p style="font-size: 1.1rem; color: #6c757d; margin-bottom: 30px;">
+                Get daily trending posts from your favorite subreddits delivered to your email every morning at 10:00 AM Israel time.
+            </p>
+            <div class="features">
+                <div class="feature">
+                    <h3>🎯 Multiple Subreddits</h3>
+                    <p>Subscribe to multiple subreddits and get all your favorite content in one place</p>
+                </div>
+                <div class="feature">
+                    <h3>📧 Daily Email Digest</h3>
+                    <p>Receive top trending posts every morning with titles, links, upvotes, and comments</p>
+                </div>
+                <div class="feature">
+                    <h3>🔐 Personal Account</h3>
+                    <p>Create your own account to manage your subscriptions and preferences</p>
+                </div>
+                <div class="feature">
+                    <h3>⚡ Real-time Updates</h3>
+                    <p>Always get the freshest content with smart error handling for restricted subreddits</p>
+                </div>
+            </div>
+            <div class="buttons">
+                <a href="/login" class="btn btn-primary">🔑 Login</a>
+                <a href="/register" class="btn btn-success">🚀 Sign Up Free</a>
+            </div>
+        </div>
+    </div>
+    <script>
+        if (document.cookie.includes('session_token=')) {
+            window.location.href = '/dashboard';
+        }
+    </script>
+</body>
+</html>'''
+        
+        self.send_response(200)
+        self.send_header('Content-type', 'text/html')
+        self.send_cors_headers()
+        self.end_headers()
+        self.wfile.write(html_content.encode())
+    
+    def serve_login_page(self):
+        """Serve the login page"""
+        html_content = '''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Reddit Monitor</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container { max-width: 400px; width: 100%; background: white; border-radius: 20px; box-shadow: 0 20px 40px rgba(0,0,0,0.1); overflow: hidden; }
+        .header { background: linear-gradient(135deg, #ff6b6b 0%, #ff8e53 100%); color: white; padding: 30px; text-align: center; }
+        .header h1 { font-size: 2rem; margin-bottom: 10px; }
+        .form-container { padding: 30px; }
+        .form-group { margin-bottom: 20px; }
+        .form-group label { display: block; margin-bottom: 8px; font-weight: 600; color: #495057; }
+        .form-group input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e9ecef;
+            border-radius: 10px;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        .btn {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .btn:hover { transform: translateY(-2px); box-shadow: 0 10px 20px rgba(0,0,0,0.2); }
+        .links { text-align: center; margin-top: 20px; }
+        .links a { color: #667eea; text-decoration: none; }
+        .links a:hover { text-decoration: underline; }
+        .status {
+            margin: 15px 0;
+            padding: 10px;
+            border-radius: 8px;
+            font-weight: 500;
+            text-align: center;
+        }
+        .status.error { background: #ffebee; color: #c62828; border: 1px solid #ef9a9a; }
+        .status.success { background: #e8f5e8; color: #2e7d32; border: 1px solid #a5d6a7; }
+        .status.loading { background: #e3f2fd; color: #1976d2; border: 1px solid #bbdefb; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔑 Login</h1>
+            <p>Welcome back to Reddit Monitor</p>
+        </div>
+        <div class="form-container">
+            <form id="loginForm">
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" autocomplete="username" required>
+                </div>
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" autocomplete="current-password" required>
+                </div>
+                <div id="status"></div>
+                <button type="submit" class="btn">Login</button>
+            </form>
+            <div class="links">
+                <p>Don't have an account? <a href="/register">Sign up here</a></p>
+                <p><a href="/">← Back to home</a></p>
+            </div>
+        </div>
+    </div>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            if (document.cookie.includes('session_token=')) {
+                window.location.href = '/dashboard';
+                return;
+            }
+            
+            document.getElementById('loginForm').addEventListener('submit', async function(e) {
+                e.preventDefault();
+                
+                const username = document.getElementById('username').value.trim();
+                const password = document.getElementById('password').value.trim();
+                
+                if (!username || !password) {
+                    showStatus('Please enter both username and password', 'error');
+                    return;
+                }
+                
+                showStatus('Logging in...', 'loading');
+                
+                try {
+                    const response = await fetch('/api/login', {
+                        method: 'POST',
+                        headers: { 
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                        },
+                        body: JSON.stringify({ username, password })
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+                    
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        document.cookie = `session_token=${result.token}; path=/; max-age=${7*24*60*60}; SameSite=Lax`;
+                        showStatus('Login successful! Redirecting...', 'success');
+                        setTimeout(() => {
+                            window.location.href = '/dashboard';
+                        }, 1000);
+                    } else {
+                        showStatus(result.error || 'Login failed', 'error');
+                    }
+                } catch (error) {
+                    console.error('Login error:', error);
+                    showStatus('Login failed. Please try again.', 'error');
+                }
+            });
+        });
+        
+        function showStatus(message, type) {
+            const statusDiv = document.getElementById('status');
+            if (statusDiv) {
+                statusDiv.className = `status ${type}`;
+                statusDiv.textContent = message;
+                statusDiv.style.display = 'block';
+            }
+        }
+    </script>
+</body>
+</html>'''
+        
+        self.send_response(200)
+        self.send_header('Content-type', 'text/html')
+        self.send_cors_headers()
+        self.end_headers()
+        self.wfile.write(html_content.encode())
+    
+    def serve_register_page(self):
+        """Serve the registration page"""
+        html_content = '''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign Up - Reddit Monitor</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container { max-width: 400px; width: 100%; background: white; border-radius: 20px; box-shadow: 0 20px 40px rgba(0,0,0,0.1); overflow: hidden; }
+        .header { background: linear-gradient(135deg, #56ab2f 0%, #a8e6cf 100%); color: white; padding: 30px; text-align: center; }
+        .header h1 { font-size: 2rem; margin-bottom: 10px; }
+        .form-container { padding: 30px; }
+        .form-group { margin-bottom: 20px; }
+        .form-group label { display: block; margin-bottom: 8px; font-weight: 600; color: #495057; }
+        .form-group input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e9ecef;
+            border-radius: 10px;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+        .form-group input:focus {
+            outline: none;
+            border-color: #56ab2f;
+            box-shadow: 0 0 0 3px rgba(86, 171, 47, 0.1);
+        }
+        .btn {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: linear-gradient(135deg, #56ab2f 0%, #a8e6cf 100%);
+            color: white;
+        }
+        .btn:hover { transform: translateY(-2px); box-shadow: 0 10px 20px rgba(0,0,0,0.2); }
+        .links { text-align: center; margin-top: 20px; }
+        .links a { color: #56ab2f; text-decoration: none; }
+        .links a:hover { text-decoration: underline; }
+        .status {
+            margin: 15px 0;
+            padding: 10px;
+            border-radius: 8px;
+            font-weight: 500;
+            text-align: center;
+        }
+        .status.error { background: #ffebee; color: #c62828; border: 1px solid #ef9a9a; }
+        .status.success { background: #e8f5e8; color: #2e7d32; border: 1px solid #a5d6a7; }
+        .status.loading { background: #e3f2fd; color: #1976d2; border: 1px solid #bbdefb; }
+        .help-text { font-size: 0.9rem; color: #6c757d; margin-top: 5px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 Sign Up</h1>
+            <p>Create your Reddit Monitor account</p>
+        </div>
+        <div class="form-container">
+            <form id="registerForm">
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" autocomplete="username" required>
+                    <div class="help-text">Choose a unique username</div>
+                </div>
+                <div class="form-group">
+                    <label for="email">Email Address</label>
+                    <input type="email" id="email" name="email" autocomplete="email" required>
+                    <div class="help-text">Where we'll send your daily digests</div>
+                </div>
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" autocomplete="new-password" required>
+                    <div class="help-text">At least 6 characters</div>
+                </div>
+                <div class="form-group">
+                    <label for="confirmPassword">Confirm Password</label>
+                    <input type="password" id="confirmPassword" name="confirmPassword" autocomplete="new-password" required>
+                </div>
+                <div id="status"></div>title_clean = re.sub(r'\s*by /u/[^\s\]]+.*$', '', title).strip()
 #!/usr/bin/env python3
 """
 Multi-User Reddit Monitor - Python 3.13 Compatible
